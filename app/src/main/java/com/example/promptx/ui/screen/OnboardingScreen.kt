@@ -32,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
@@ -47,8 +48,13 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun OnboardingScreen(
-    navController: NavController
+    navController: NavController,
+    modifier: Modifier = Modifier
 ) {
+    val gradientBrush = Brush.verticalGradient(
+        colors = listOf(Color(0xFF1C1C1C), Color(0xFF3A3A3A))
+    )
+
     val onboardingPageData = listOf(
         "PromptX" to "AI-Powered Prompt Generation",
         "Smart AI" to "Get Precise Prompts Instantly",
@@ -74,7 +80,7 @@ fun OnboardingScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF1C1C1C))
+            .background(brush = gradientBrush)
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragStart = { isUserDragging = true },
@@ -172,7 +178,7 @@ fun OnboardingScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Button(
-                onClick = { /* Navigate to next screen */ },
+                onClick = { navController.navigate("signup") },
                 modifier = Modifier
                     .width(screenMaxWidth * 0.85f)
                     .height(50.dp),
@@ -184,7 +190,7 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            TextButton(onClick = { /* Navigate to Login */ }) {
+            TextButton(onClick = { navController.navigate("login") }) {
                 Text(
                     text = "I ALREADY HAVE AN ACCOUNT",
                     color = Color.White,
