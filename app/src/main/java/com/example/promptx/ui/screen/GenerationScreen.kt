@@ -1,5 +1,7 @@
 package com.example.promptx.ui.screen
 
+import android.util.Log
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -13,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
@@ -25,7 +28,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.ClipboardManager
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -34,10 +41,13 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.example.promptx.R
 
+data class ChatMessage(val text: String, val isUser: Boolean)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PromptXMainScreen(
     navController: NavController,
+    viewModel: GenerationViewModel = viewModel()
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showSheet by remember { mutableStateOf(false) }
@@ -46,9 +56,30 @@ fun PromptXMainScreen(
     val selectedOptions = remember { mutableStateMapOf<String, String>() }
     var dialogOption by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
 
+    var messages = remember { mutableStateListOf<ChatMessage>() } // (Message, isUser)
+    val scrollState = rememberLazyListState()
+    var generatePrompt by remember { mutableStateOf("") }
+    val uiState by viewModel.uiState.collectAsState()
+
     val gradientBrush = Brush.verticalGradient(
         colors = listOf(Color(0xFF1C1C1C), Color(0xFF3A3A3A))
     )
+
+    LaunchedEffect(uiState.generatedPrompt) {
+        Log.d("DEBUG", "Updated UI State: ${uiState.generatedPrompt}")
+        if(uiState.isLoading) {
+            messages.add(ChatMessage("Generating response...", false))
+        } else if(uiState.error != null) {
+            messages.add(ChatMessage("Error: ${uiState.error}", false))
+        }
+        if(uiState.generatedPrompt.isNotBlank() && !uiState.isLoading && uiState.error == null && messages.lastOrNull()?.text != uiState.generatedPrompt) {
+            messages.add(ChatMessage(uiState.generatedPrompt, false))
+        }
+    }
+
+//    LaunchedEffect(messages.size) {
+//        scrollState.animateScrollToItem(messages.lastIndex)
+//    }
 
     Box(
         modifier = Modifier
@@ -118,15 +149,17 @@ fun PromptXMainScreen(
                             .weight(1f)
                             .clip(RoundedCornerShape(16.dp)),
                         trailingIcon = {
-                            IconButton(
-                                onClick = { showSheet = true },
-                                enabled = promptText.isNotEmpty()
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "Customize Prompt",
-                                    tint = Color.White
-                                )
+                            Row {
+                                IconButton(
+                                    onClick = { showSheet = true },
+                                    enabled = promptText.isNotEmpty()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "Customize Prompt",
+                                        tint = Color.White
+                                    )
+                                }
                             }
                         },
                         colors = TextFieldDefaults.colors(
@@ -148,6 +181,22 @@ fun PromptXMainScreen(
                     .background(Color.Transparent)
                     .padding(paddingValues)
             ) {
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(8.dp),
+                        state = scrollState
+                    ) {
+                        items(messages) {
+                            ChatBubble(it, LocalClipboardManager.current, { viewModel.copyPrompt() })
+                        }
+                    }
+                }
 
                 if (showSheet) {
                     ModalBottomSheet(
@@ -204,6 +253,11 @@ fun PromptXMainScreen(
                             Spacer(modifier = Modifier.height(16.dp))
                             Button(
                                 onClick = {
+                                    val selectedSettings = buildPromptGenerationInstructions(promptText, selectedOptions)
+                                    generatePrompt = "Prompt: $promptText\nSettings: $selectedSettings"
+                                    viewModel.updateInputText(promptText)
+                                    viewModel.generatePrompt(selectedOptions.toMap())
+                                    messages.add(ChatMessage(generatePrompt, true))
                                     showSheet = false
                                     promptText = ""
                                           },
@@ -354,8 +408,67 @@ fun OptionSelectionDialog(
     )
 }
 
+@Composable
+fun ChatBubble(
+    message: ChatMessage,
+    clipboardManager: ClipboardManager,
+    OnCopy: () -> Unit
+) {
+    val context = LocalContext.current
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(8.dp)
+                    .background(
+                        color = if (message.isUser) Color(0xFF007AFF) else Color(0xFF3A3A3A),
+                        shape = RoundedCornerShape(
+                            topStart = 16.dp, topEnd = 16.dp,
+                            bottomEnd = if (message.isUser) 0.dp else 16.dp,
+                            bottomStart = if (message.isUser) 16.dp else 0.dp
+                        )
+                    )
+                    .padding(12.dp)
+            ) {
+                Text(text = message.text, color = Color.White)
+            }
+        }
+        IconButton(
+            onClick = {
+                clipboardManager.setText(AnnotatedString(message.text))
+                OnCopy()
+                Toast.makeText(context, "Text Copied!", Toast.LENGTH_SHORT).show()
+            }
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                tint = Color.White
+            )
+        }
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 fun PreviewPromptXMainScreen() {
     PromptXMainScreen(rememberNavController())
+}
+
+fun buildPromptGenerationInstructions(promptText: String, selectedOptions: Map<String, String>): String {
+    val instructionsBuilder = StringBuilder()
+
+    instructionsBuilder.append("Generate a prompt about: '$promptText'. ")
+    instructionsBuilder.append("Please adhere to the following specifications:\n")
+
+    selectedOptions.forEach { (key, value) ->
+        instructionsBuilder.append("- $key: $value\n")
+    }
+
+    instructionsBuilder.append("Craft the prompt to be clear, concise, and tailored to these specific requirements.")
+
+    return instructionsBuilder.toString()
 }
