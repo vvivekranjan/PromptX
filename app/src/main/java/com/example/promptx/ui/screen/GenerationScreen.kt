@@ -3,6 +3,7 @@ package com.example.promptx.ui.screen
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,7 +16,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
@@ -40,6 +40,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.example.promptx.R
+import com.example.promptx.ui.data.advanceSetting
+import com.example.promptx.ui.data.basicSetting
 
 data class ChatMessage(val text: String, val isUser: Boolean)
 
@@ -67,12 +69,12 @@ fun PromptXMainScreen(
 
     LaunchedEffect(uiState.generatedPrompt) {
         Log.d("DEBUG", "Updated UI State: ${uiState.generatedPrompt}")
-        if(uiState.isLoading) {
+        if (uiState.isLoading) {
             messages.add(ChatMessage("Generating response...", false))
-        } else if(uiState.error != null) {
+        } else if (uiState.error != null) {
             messages.add(ChatMessage("Error: ${uiState.error}", false))
         }
-        if(uiState.generatedPrompt.isNotBlank() && !uiState.isLoading && uiState.error == null && messages.lastOrNull()?.text != uiState.generatedPrompt) {
+        if (uiState.generatedPrompt.isNotBlank() && !uiState.isLoading && uiState.error == null && messages.lastOrNull()?.text != uiState.generatedPrompt) {
             messages.add(ChatMessage(uiState.generatedPrompt, false))
         }
     }
@@ -115,7 +117,7 @@ fun PromptXMainScreen(
                             onClick = { }
                         ) {
                             Image(
-                                painter = painterResource(R.drawable.ic_google),
+                                painter = painterResource(R.drawable.ic_account),
                                 contentScale = ContentScale.Crop,
                                 contentDescription = null,
                                 modifier = Modifier
@@ -193,7 +195,21 @@ fun PromptXMainScreen(
                         state = scrollState
                     ) {
                         items(messages) {
-                            ChatBubble(it, LocalClipboardManager.current, { viewModel.copyPrompt() })
+//                            if (uiState.isLoading && !it.isUser) {
+//                                Row(
+//                                    modifier = Modifier.fillMaxWidth(),
+//                                    horizontalArrangement = Arrangement.Center
+//                                ) {
+//                                    CircularProgressIndicator()
+//                                }
+//                            }
+                            ChatBubble(
+                                message = it,
+                                clipboardManager = LocalClipboardManager.current,
+                                OnCopy = { viewModel.copyPrompt() },
+                                OnPositiveFeedback = { viewModel.sendPositiveFeedback() },
+                                OnNegativeFeedback = { viewModel.sendNegativeFeedback() }
+                            )
                         }
                     }
                 }
@@ -218,49 +234,50 @@ fun PromptXMainScreen(
 
                             CustomizationSection(
                                 title = "Basic Settings",
-                                options = listOf(
-                                    "Topic" to listOf("Technology", "Health", "Business", "Education"),
-                                    "Tone" to listOf("Formal", "Casual", "Persuasive", "Humorous"),
-                                    "Length" to listOf("Short", "Medium", "Long"),
-                                    "Audience" to listOf("General", "Experts", "Beginners"),
-                                    "Keywords" to listOf("Auto-detect", "User-defined"),
-                                    "Output Format" to listOf("Article", "Blog Post", "Email", "List")
-                                ),
+                                options = basicSetting,
                                 isPremium = false,
                                 expandedSection = expandedSection,
-                                onExpand = { section -> expandedSection = if (expandedSection == section) null else section },
+                                onExpand = { section ->
+                                    expandedSection =
+                                        if (expandedSection == section) null else section
+                                },
                                 selectedOptions = selectedOptions,
-                                onOptionClick = { option, choices -> dialogOption = option to choices }
+                                onOptionClick = { option, choices ->
+                                    dialogOption = option to choices
+                                }
                             )
 
                             CustomizationSection(
                                 title = "Advanced Settings (Premium) \uD83D\uDD12",
-                                options = listOf(
-                                    "Creativity Level" to emptyList(),
-                                    "Writing Style" to emptyList(),
-                                    "Context & Background Info" to emptyList(),
-                                    "SEO Optimization" to emptyList(),
-                                    "Language & Tone Adjustment" to emptyList(),
-                                    "Multiple Variations" to emptyList()
-                                ),
+                                options = advanceSetting,
                                 isPremium = true,
                                 expandedSection = expandedSection,
-                                onExpand = { section -> expandedSection = if (expandedSection == section) null else section },
+                                onExpand = { section ->
+                                    expandedSection =
+                                        if (expandedSection == section) null else section
+                                },
                                 selectedOptions = selectedOptions,
-                                onOptionClick = { option, choices -> dialogOption = option to choices }
+                                onOptionClick = { option, choices ->
+                                    dialogOption = option to choices
+                                }
                             )
 
                             Spacer(modifier = Modifier.height(16.dp))
                             Button(
                                 onClick = {
-                                    val selectedSettings = buildPromptGenerationInstructions(promptText, selectedOptions)
-                                    generatePrompt = "Prompt: $promptText\nSettings: $selectedSettings"
-                                    viewModel.updateInputText(promptText)
+                                    val selectedSettings = buildPromptGenerationInstructions(
+                                        promptText,
+                                        selectedOptions
+                                    )
+                                    generatePrompt =
+                                        "Prompt: $promptText\nSettings: $selectedSettings"
+                                    viewModel.updateInputText(promptText, selectedOptions.toMap())
                                     viewModel.generatePrompt(selectedOptions.toMap())
                                     messages.add(ChatMessage(generatePrompt, true))
                                     showSheet = false
                                     promptText = ""
-                                          },
+                                    selectedOptions.clear()
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(16.dp)
                             ) {
@@ -323,7 +340,12 @@ fun CustomizationSection(
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     options.forEach { (option, choices) ->
                         if (choices.isNotEmpty()) {
-                            DialogOption(option, choices, selectedOptions[option] ?: choices.first(), onOptionClick)
+                            DialogOption(
+                                option,
+                                choices,
+                                selectedOptions[option] ?: choices.first(),
+                                onOptionClick
+                            )
                         } else {
                             Row(
                                 modifier = Modifier
@@ -412,7 +434,9 @@ fun OptionSelectionDialog(
 fun ChatBubble(
     message: ChatMessage,
     clipboardManager: ClipboardManager,
-    OnCopy: () -> Unit
+    OnCopy: () -> Unit,
+    OnPositiveFeedback: () -> Unit,
+    OnNegativeFeedback: () -> Unit
 ) {
     val context = LocalContext.current
     Column {
@@ -433,21 +457,52 @@ fun ChatBubble(
                     )
                     .padding(12.dp)
             ) {
-                Text(text = message.text, color = Color.White)
+                Text(
+                    text = message.text,
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .animateContentSize(), // Smooth expanding effect
+                    color = Color.White
+                )
             }
         }
-        IconButton(
-            onClick = {
-                clipboardManager.setText(AnnotatedString(message.text))
-                OnCopy()
-                Toast.makeText(context, "Text Copied!", Toast.LENGTH_SHORT).show()
+        Row {
+            IconButton(
+                onClick = {
+                    clipboardManager.setText(AnnotatedString(message.text))
+                    OnCopy()
+                    Toast.makeText(context, "Text Copied!", Toast.LENGTH_SHORT).show()
+                }
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_content_copy),
+                    contentDescription = null,
+                )
             }
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Add,
-                contentDescription = null,
-                tint = Color.White
-            )
+            if (!message.isUser) {
+                IconButton(
+                    onClick = {
+                    OnPositiveFeedback()
+                    Toast.makeText(context, "Positive Feedback Given!", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_thumb_up),
+                        contentDescription = null,
+                    )
+                }
+                IconButton(
+                    onClick = {
+                    OnNegativeFeedback()
+                    Toast.makeText(context, "Negative Feedback Given!", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_thumb_down),
+                        contentDescription = null,
+                    )
+                }
+            }
         }
     }
 }
@@ -458,11 +513,13 @@ fun PreviewPromptXMainScreen() {
     PromptXMainScreen(rememberNavController())
 }
 
-fun buildPromptGenerationInstructions(promptText: String, selectedOptions: Map<String, String>): String {
+fun buildPromptGenerationInstructions(
+    promptText: String,
+    selectedOptions: Map<String, String>
+): String {
     val instructionsBuilder = StringBuilder()
 
-    instructionsBuilder.append("Generate a prompt about: '$promptText'. ")
-    instructionsBuilder.append("Please adhere to the following specifications:\n")
+    instructionsBuilder.append("Generate a prompt about: '$promptText'. with these following specifications:\n")
 
     selectedOptions.forEach { (key, value) ->
         instructionsBuilder.append("- $key: $value\n")
