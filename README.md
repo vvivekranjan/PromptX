@@ -1,6 +1,7 @@
 🔥 PromptX – AI-Powered Prompt Generator
 PromptX is an AI-powered prompt generation app built using Jetpack Compose and Gemini API.
 It allows users to generate high-quality AI prompts tailored for various use cases, such as writing, blogging, marketing, coding, and creativity.
+
 ✨ Features
 🎨 Customizable Prompt Generation – Select topics, tone, audience, length, and more.
 🚀 Premium Advanced Settings – Adjust creativity, SEO, language tone, and multiple variations.
